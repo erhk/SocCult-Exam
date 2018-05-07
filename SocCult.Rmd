@@ -1,0 +1,95 @@
+---
+title: "SocCult Exam"
+author: "Emily H. K."
+date: "7 maj 2018"
+output: html_document
+---
+
+```{r}
+setwd("C:/Users/emily/Desktop/Uni/Rstudio/R - Datascripts/Comp. Modelling/SocCult-Exam")
+df <- read.csv("bigCSVOfSentiment.csv" )
+library(rethinking)
+
+#Remove NA's
+df <- na.omit(df)
+
+#Fix lowercase issue
+df$newspaper <- toupper(df$newspaper)
+                        
+df$year = sub("y", "", df$year)
+
+df$article = sub("a", "", df$article)
+
+#Make year numeric
+df$year <- as.numeric(df$year)
+
+#Change searchTerm
+df$searchTerm = sub("fly", 0, df$searchTerm)
+df$searchTerm = sub("ind", 1, df$searchTerm)
+
+#Make searchterm numeric
+df$searchTerm <- as.numeric(df$searchTerm)
+
+write.csv(df, file = "bigCSVOfSentimentClean.csv")
+
+#Make a datasubset to not kill the computer
+dfSub = df[sample(nrow(df), 100), ]
+
+
+
+```
+
+
+#Models
+```{r}
+
+
+#Make a datasubset to not kill the computer
+dfSub = df[sample(nrow(df), 100), ]
+
+M1 <- map2stan(
+  alist(
+    sentiment ~ dnorm(mu, sigma),
+    mu <- a + bST*searchTerm,
+    a ~ dnorm(0,1),
+    bST ~ dnorm(0,1),
+    sigma ~ dunif(0,1)
+  ), data = dfSub, chains = 2, cores = 2, iter = 1000, warmup = 500
+)
+precis(M1)
+
+
+M2 <- map2stan(
+  alist(
+    sentiment ~ dnorm(mu, sigma),
+    mu <- a + bST*searchTerm + bY*year,
+    a ~ dnorm(0,1),
+    bY ~ dnorm(2013,2015),
+    bST ~ dnorm(0,1),
+    sigma ~ dunif(0,1)
+  ), data = dfSub, chains = 2, cores = 2, iter = 1000, warmup = 500
+)
+
+precis(M2)
+
+sim.PD2 <- sim(M2, data = dfSub)
+
+dens(sim.PD2, col = "red", xlim = c(-3, 2.5), ylim = c(0, 1))
+par(new=TRUE)
+dens(dfSub$sentiment, xlim = c(-3,2.5), ylim = c(0,1))
+
+
+#TinyPlot
+samples = extract.samples(M2, n =1e4)
+samples$bprior = rnorm(1e4, 0, 0.2)
+
+type= rep(c("posterior","prior"), each =1e4)
+value =c(t(samples), t(samples$bprior))
+d = data.frame(value, type)
+
+priorP1 <- ggplot(d,aes(value,group =type, color = type)) +geom_density()+ggtitle("Sceptical Model")
+
+
+
+```
+
