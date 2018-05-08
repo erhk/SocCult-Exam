@@ -8,14 +8,19 @@ output: html_document
 ```{r}
 setwd("C:/Users/emily/Desktop/Uni/Rstudio/R - Datascripts/Comp. Modelling/SocCult-Exam")
 df <- read.csv("bigCSVOfSentiment.csv" )
-library(rethinking)
+install.packages("brms")
+library(rethinking);library(brms)
+```
 
-#Remove NA's
+
+#Clean and sort data!
+```{r}
+# #Remove NA's
 df <- na.omit(df)
-
-#Fix lowercase issue
+# 
+# #Fix lowercase issue
 df$newspaper <- toupper(df$newspaper)
-                        
+#                         
 df$year = sub("y", "", df$year)
 
 df$article = sub("a", "", df$article)
@@ -29,42 +34,58 @@ df$searchTerm = sub("ind", 1, df$searchTerm)
 
 #Make searchterm numeric
 df$searchTerm <- as.numeric(df$searchTerm)
+str(df)
+#write.csv(df, file = "bigCSVOfSentimentClean.csv")
 
-write.csv(df, file = "bigCSVOfSentimentClean.csv")
+#make an article count
+#THAT IS CORRECT!
+dUnique = unique(df[c("article", "year", "newspaper", "searchTerm")])
+#make a number of stuffy stuffs
+dUnique <- tibble::rowid_to_column(dUnique, "aInd")
+df = merge(df, dUnique)
 
-#Make a datasubset to not kill the computer
+# 
+# #Make a datasubset to not kill the computer
 dfSub = df[sample(nrow(df), 100), ]
-
-
 
 ```
 
 
-#Models
+#Rethinking models, map2stand
 ```{r}
-
+#SEARCHTERM
+#Fly = 0
+#Ind = 1
 
 #Make a datasubset to not kill the computer
 dfSub = df[sample(nrow(df), 100), ]
+str(dfSub)
 
+#Model with Search term only
 M1 <- map2stan(
   alist(
     sentiment ~ dnorm(mu, sigma),
     mu <- a + bST*searchTerm,
     a ~ dnorm(0,1),
     bST ~ dnorm(0,1),
-    sigma ~ dunif(0,1)
+    sigma ~ dnorm(0,1)
   ), data = dfSub, chains = 2, cores = 2, iter = 1000, warmup = 500
 )
 precis(M1)
 
 
+#Change year to be from 1/5
+dfSub$year <- sub("201","", dfSub$year)
+dfSub$year <- as.numeric(dfSub$year)
+
+
+#Model with search term and year
 M2 <- map2stan(
   alist(
     sentiment ~ dnorm(mu, sigma),
     mu <- a + bST*searchTerm + bY*year,
     a ~ dnorm(0,1),
-    bY ~ dnorm(2013,2015),
+    bY ~ dnorm(0,1),
     bST ~ dnorm(0,1),
     sigma ~ dunif(0,1)
   ), data = dfSub, chains = 2, cores = 2, iter = 1000, warmup = 500
@@ -72,24 +93,92 @@ M2 <- map2stan(
 
 precis(M2)
 
+#Add article to intercept. It says: The value of article for each case
+M2.a <- map2stan(
+  alist(
+    sentiment ~ dnorm(mu, sigma),
+    mu <- a[article] + bST*searchTerm + bY*year,
+    a[article] ~ dnorm(0,0.1),
+    bY ~ dnorm(0,1),
+    bST ~ dnorm(0,1),
+    sigma ~ dunif(0,1)
+  ), data = dfSub, chains = 2, cores = 2, iter = 1000, warmup = 500
+)
+
+precis(M2.a, depth = 2)
+
+
+
+
+#Dens quality plot. Definitely not gaussian.
 sim.PD2 <- sim(M2, data = dfSub)
 
-dens(sim.PD2, col = "red", xlim = c(-3, 2.5), ylim = c(0, 1))
+dens(sim.PD2, col = "red", xlim = c(-5, 5), ylim = c(0, 1))
 par(new=TRUE)
-dens(dfSub$sentiment, xlim = c(-3,2.5), ylim = c(0,1))
+dens(dfSub$sentiment, xlim = c(-5,5), ylim = c(0,1))
 
 
-#TinyPlot
-samples = extract.samples(M2, n =1e4)
-samples$bprior = rnorm(1e4, 0, 0.2)
 
-type= rep(c("posterior","prior"), each =1e4)
-value =c(t(samples), t(samples$bprior))
-d = data.frame(value, type)
+#Only year s predictor
+M3 <- map2stan(
+  alist(
+    sentiment ~ dnorm(mu, sigma),
+    mu <- a + bY*year,
+    a ~ dnorm(0,0.1),
+    bY ~ dnorm(0,0.1),
+    sigma ~ dcauchy(0,0.1)
+  ), data = dfSub, chains = 2, cores = 2, iter = 1000, warmup = 500
+)
+precis(M3)
 
-priorP1 <- ggplot(d,aes(value,group =type, color = type)) +geom_density()+ggtitle("Sceptical Model")
 
 
+#MCMC plots
+post <- extract.samples(M3)
+
+pairs(M3)
+
+
+#GG-plots___________________________________________________________________________
+library(ggplot2)
+
+
+#Histogram
+ggplot(dfSub, aes(sentiment))+
+  geom_histogram(aes(y=..density..))
+
+#Sentiment by year, time and newspaper
+ggplot(dfSub, aes(year, sentiment, colour = searchTerm))+
+  geom_point()+
+  geom_smooth(method = "lm") +
+  facet_wrap(~ newspaper)
+```
+
+
+#BRMS MODELLER AND PLOTS ___________________________________________________________
+```{r}
+#Make models with BRMS HYPE! Either use gaussian or ordinal
+prior<-set_prior()
+m1<-brms::brm(sentiment ~ 1 + year * searchTerm + (1|article),data = dfSub,family=gaussian, chains=2,cores=2)
+
+#More advanced model, have sigma as a function, 
+m2<-brms::brm(bf(sentiment ~ 1 + year * searchTerm * politicalBias+ (1|article),sigma~politicalbias),data,family=gaussian, chains=2,cores=2)
+
+#Shows the interactions and effects(Ask Riccardo again, maybe? (So call me maybe!))
+plot(marginal_effects(m1))
+#check prior and posterior (plot)
+pp_check(m)
+
+
+#This is to check information criteria (IC) (ex. WAIC) /compare models
+m<-add_ic(m,ic="waic")
+compare_ic(m,m1,m2,ic="waic")
+model_weights(m1,m2,m3,ic="waic")
+```
+
+
+
+```{r}
 
 ```
 
