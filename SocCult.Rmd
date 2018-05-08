@@ -155,7 +155,9 @@ ggplot(dfSub, aes(year, sentiment, colour = searchTerm))+
 ```
 
 
-#BRMS MODELLER AND PLOTS ___________________________________________________________
+#BRMS MODELLER AND PLOTS
+
+Split into fly and ind, not seperate datasets, but just show difference between in these plots. 
 ```{r}
 #Make models with BRMS HYPE! Either use gaussian or ordinal
 prior<-set_prior()
@@ -165,7 +167,7 @@ m1<-brms::brm(sentiment ~ 1 + year * searchTerm + (1|article),data = dfSub,famil
 m2<-brms::brm(bf(sentiment ~ 1 + year * searchTerm * politicalBias+ (1|article),sigma~politicalbias),data,family=gaussian, chains=2,cores=2)
 
 #Shows the interactions and effects(Ask Riccardo again, maybe? (So call me maybe!))
-plot(marginal_effects(m1))
+plot(marginal_effects(m1), points = T)
 #check prior and posterior (plot)
 pp_check(m)
 
