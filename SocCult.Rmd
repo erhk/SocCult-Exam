@@ -8,7 +8,7 @@ output: html_document
 ```{r}
 setwd("C:/Users/emily/Desktop/Uni/Rstudio/R - Datascripts/Comp. Modelling/SocCult-Exam")
 df <- read.csv("bigCSVOfSentiment.csv" )
-install.packages("brms")
+#install.packages("brms")
 library(rethinking);library(brms)
 ```
 
@@ -27,15 +27,8 @@ df$article = sub("a", "", df$article)
 
 #Make year numeric
 df$year <- as.numeric(df$year)
-
-#Change searchTerm
-df$searchTerm = sub("fly", 0, df$searchTerm)
-df$searchTerm = sub("ind", 1, df$searchTerm)
-
-#Make searchterm numeric
-df$searchTerm <- as.numeric(df$searchTerm)
 str(df)
-#write.csv(df, file = "bigCSVOfSentimentClean.csv")
+
 
 #make an article count
 #THAT IS CORRECT!
@@ -53,6 +46,10 @@ df$politicalBias = sub("D", "3", df$politicalBias)
 df$politicalBias = sub("P", "2", df$politicalBias)
 df$politicalBias = sub("I", "1", df$politicalBias)
 
+df$politicalBias <- as.numeric(df$politicalBias)
+
+
+
 #Change year to be from 1/5
 df$year <- sub("201","", df$year)
 df$year <- as.numeric(df$year)
@@ -68,11 +65,19 @@ dfSub = df[sample(nrow(df), 100), ]
 ```
 
 
-#Rethinking models, map2stand
+#Rethinking models, map2stan. Doesn't work unless you change ind and fly to 1, 0
 ```{r}
 #SEARCHTERM
 #Fly = 0
 #Ind = 1
+
+#Change searchTerm
+#df$searchTerm = sub("fly", 0, df$searchTerm)
+#df$searchTerm = sub("ind", 1, df$searchTerm)
+
+#Make searchterm numeric
+#df$searchTerm <- as.numeric(df$searchTerm)
+
 
 #Make a datasubset to not kill the computer
 dfSub = df[sample(nrow(df), 100), ]
@@ -154,6 +159,26 @@ post <- extract.samples(M3)
 pairs(M3)
 
 
+
+# m12<-brms::brm(bf(sentiment ~ 1 + year * searchTerm + politicalBias + (1|aInd), sigma~politicalBias), data = dfSub,family=gaussian, chains=2,cores=2)
+# proc.time() - ptm
+# summary(m12)
+
+M3 <- map2stan(
+  alist(
+    sentiment ~ dnorm(mu, sigma),
+    mu <- a + bY*year * bST*searchTerm + bPB*politicalBias ,
+    a ~ dnorm(0,0.1),
+    bY ~ dnorm(0,0.1),
+    bST ~ dnorm(0,0.1),
+    bPB ~ dnorm(0,0.1),
+    sigma ~ dcauchy(0,0.1)
+  ), data = dfSub, chains = 2, cores = 2, iter = 1000, warmup = 500
+)
+precis(M3)
+
+
+
 #GG-plots___________________________________________________________________________
 library(ggplot2)
 
@@ -173,37 +198,282 @@ ggplot(dfSub, aes(year, sentiment, colour = searchTerm))+
 #BRMS MODELLER AND PLOTS
 
 Split into fly and ind, not seperate datasets, but just show difference between in these plots. 
+
+#Sentiment!
 ```{r}
 #Make models with BRMS HYPE! Either use gaussian or ordinal
-prior<-set_prior()
-m1<-brms::brm(sentiment ~ 1 + year * searchTerm + (1|article),data = dfSub,family=gaussian, chains=2,cores=2)
+#prior<-set_prior() to set own priors
 
-#Shows the interactions and effects(Ask Riccardo again, maybe? (So call me maybe!))
+
+ptm <- proc.time()
+#Intercept model
+m0 <- brms::brm(sentiment ~ 1 + (1|aInd), data = dfSub, family = gaussian, chains = 2, cores = 2)
+proc.time() - ptm
+summary(m0)
+#check prior and posterior (plot)
+pp_check(m0)
+
+
+
+
+
+ptm <- proc.time()
+#Model with year
+m1<-brms::brm(sentiment ~ 1 + year + (1|aInd),data = dfSub,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m1)
+#Shows the interactions and effects
 plot(marginal_effects(m1), points = T)
 #check prior and posterior (plot)
 pp_check(m1)
 
 
-#More advanced model, have sigma as a function, 
-m2<-brms::brm(bf(sentiment ~ 1 + year * searchTerm * politicalBias+ (1|article),sigma~politicalBias), dfSub, family=gaussian, chains=2,cores=2)
 
 
-#Shows the interactions and effects(Ask Riccardo again, maybe? (So call me maybe!))
+ptm <- proc.time()
+#Model with searc term
+m2<-brms::brm(sentiment ~ 1 + searchTerm + (1|aInd),data = dfSub,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m2)
+#Shows the interactions and effects
 plot(marginal_effects(m2), points = T)
 #check prior and posterior (plot)
 pp_check(m2)
 
 
 
+
+ptm <- proc.time()
+#Model with Political Bias
+m3<-brms::brm(sentiment ~ 1 + politicalBias + (1|aInd),data = dfSub,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m3)
+#Shows the interactions and effects
+plot(marginal_effects(m3), points = T)
+#check prior and posterior (plot)
+pp_check(m3)
+
+
+
+
+
+ptm <- proc.time()
+#Model with year + searchterm
+m4<-brms::brm(sentiment ~ 1 + year + searchTerm + (1|aInd),data = dfSub,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m4)
+#Shows the interactions and effects
+plot(marginal_effects(m4), points = T)
+#check prior and posterior (plot)
+pp_check(m4)
+
+
+
+
+ptm <- proc.time()
+#Model w/ year + political bias
+m5<-brms::brm(sentiment ~ 1 + year + politicalBias + (1|aInd),data = dfSub,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m5)
+#Shows the interactions and effects
+plot(marginal_effects(m5), points = T)
+#check prior and posterior (plot)
+pp_check(m5)
+
+
+
+
+ptm <- proc.time()
+#Model w/ searchterm and pol.bias without year
+m6<-brms::brm(sentiment ~ 1 + searchTerm + politicalBias + (1|aInd),data = dfSub,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m6)
+#Shows the interactions and effects
+plot(marginal_effects(m6), points = T)
+#check prior and posterior (plot)
+pp_check(m6)
+
+
+
+
+ptm <- proc.time()
+#Big + model w/ all 
+m7<-brms::brm(sentiment ~ 1 + year + searchTerm + politicalBias + (1|aInd),data = dfSub,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m7)
+#Shows the interactions and effects
+plot(marginal_effects(m7), points = T)
+#check prior and posterior (plot)
+pp_check(m7)
+
+
+
+
+#INTERACTION MODELS
+
+
+ptm <- proc.time()
+#Model w/ year * searchterm
+m8<-brms::brm(bf(sentiment ~ 1 + year * searchTerm + (1|aInd), sigma~politicalBias),data = dfSub,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m8)
+#Shows the interactions and effects
+plot(marginal_effects(m8), points = T)
+#check prior and posterior (plot)
+pp_check(m8)
+
+
+
+
+
+ptm <- proc.time()
+#Model w/ year * pol.bias
+m9<-brms::brm(bf(sentiment ~ 1 + year * politicalBias + (1|aInd), sigma~politicalBias), data = dfSub,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m9)
+#Shows the interactions and effects
+plot(marginal_effects(m9), points = T)
+#check prior and posterior (plot)
+pp_check(m9)
+
+
+
+
+ptm <- proc.time()
+#Model w/ searchterm and pol.bias without year
+m10<-brms::brm(bf(sentiment ~ 1 + searchTerm * politicalBias + (1|aInd),sigma~politicalBias), data = dfSub,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m10)
+#Shows the interactions and effects
+plot(marginal_effects(m10), points = T)
+#check prior and posterior (plot)
+pp_check(m10)
+
+
+
+
+
+ptm <- proc.time()
+#Big * model w/ all
+m11<-brms::brm(bf(sentiment ~ 1 + year * searchTerm * politicalBias + (1|aInd),sigma~politicalBias), data = dfSub,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m11)
+#Shows the interactions and effects
+plot(marginal_effects(m11), points = T)
+#check prior and posterior (plot)
+pp_check(m11)
+
+
+
+
+
+ptm <- proc.time()
+#Model w/ year interacting w/ searchTerm * pol.bias
+m12<-brms::brm(bf(sentiment ~ 1 + year * searchTerm + politicalBias + (1|aInd), sigma~politicalBias), data = dfSub,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m12)
+#Shows the interactions and effects
+plot(marginal_effects(m12), points = T)
+
+
+#check prior and posterior (plot)
+pp_check(m12)
+
+
+ptm <- proc.time()
+#Model w/ year interacting w/ searchTerm * pol.bias
+m13<-brms::brm(bf(sentiment ~ 1 + year + searchTerm * politicalBias + (1|aInd), sigma~politicalBias), data = dfSub,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m13)
+#Shows the interactions and effects
+plot(marginal_effects(m13), points = T)
+
+plot(m13, N = 3, ask = F)
+
+conditions <- data.frame(politicalBias = unique(dfSub$politicalBias))
+rownames(conditions) <- unique(dfSub$politicalBias)
+me_m13 <- marginal_effects(
+  m13, conditions = conditions, 
+  re_formula = NULL, method = "predict", ask = F
+)
+
+plot(me_m13, ncol = 2, points = TRUE)
+
+
+
+
+#Sentiment by year, time and newspaper
+ggplot(df, aes(year, sentiment, colour = searchTerm))+
+  geom_point()+
+  geom_abline(aes(mapping = "")) +
+  facet_wrap(~ newspaper)
+
+
+#check prior and posterior (plot)
+pp_check(m13)
+
+#Funky wtf happened with these models, model check. Hype
+m12.a<-add_ic(m12,ic="waic")
+m13.a <- add_ic(m13, ic="waic")
+
+compare_ic(m0.a, m1.a, m3.a, m13.a, ic = "waic")
+
+model_weights(m12.a, m13.a, ic = "waic")
+
 #This is to check information criteria (IC) (ex. WAIC) /compare models
-m1.a<-add_ic(m1,ic="waic")
+m0.a<-add_ic(m0,ic="waic")
+m1.a <- add_ic(m1, ic="waic")
 m2.a <- add_ic(m2, ic="waic")
-compare_ic(m1.a,m2.a,ic="waic")
-model_weights(m1.a,m2.a,ic="waic")
+m3.a <- add_ic(m3, ic="waic")
+m4.a <- add_ic(m4, ic="waic")
+m5.a <- add_ic(m5, ic="waic")
+m6.a <- add_ic(m6, ic="waic")
+m7.a <- add_ic(m7, ic="waic")
+m8.a <- add_ic(m8, ic="waic")
+m9.a <- add_ic(m9, ic="waic")
+m10.a <- add_ic(m10, ic="waic")
+m11.a <- add_ic(m11, ic="waic")
+m12.a <- add_ic(m12, ic="waic")
+
+
+
+
+
+
+compare_ic(m0.a, m1.a,m2.a, m3.a, m4.a, m5.a, m6.a, m7.a, m8.a, m9.a, m10.a, m11.a, m12.a, 
+ic="waic")
+round(model_weights(m0.a, m1.a,m2.a, m3.a, m4.a, m5.a, m6.a, m7.a, m8.a, m9.a, m10.a, m11.a, m12.a,m13.a,ic="waic"), 3)
+
+
+
+
+
+
+# #More advanced model, have sigma as a function, 
+# mSUPERADVANCED<-brms::brm(bf(sentiment ~ 1 + year * searchTerm * politicalBias+ (1|aInd),sigma~politicalBias), dfSub, family=gaussian, chains=2,cores=2)
+# #Shows the interactions and effects(Ask Riccardo again, maybe? (So call me maybe!))
+# plot(marginal_effects(mSUPERADVANCED), points = T)
+# #check prior and posterior (plot)
+# pp_check(mSUPERADVANCED)
+
+
+
+#How to time how long your model takes to do stuff?! Curious? Yes, indeed!
+#Basically write the ptm line, then your model, then the new ptm line
+# ptm <- proc.time()
+
+#Write your model
+
+#proc.time() - ptm
+
+
+
+
+
 ```
 
 
-
+#Arousal
 ```{r}
 
 ```
