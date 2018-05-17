@@ -306,11 +306,14 @@ plot(marginal_effects(m7), points = T)
 #check prior and posterior (plot)
 pp_check(m7)
 
-
+```
 
 
 #INTERACTION MODELS
 
+```{r}
+
+#Model 8 __________________________________________________________
 
 ptm <- proc.time()
 #Model w/ year * searchterm
@@ -324,8 +327,7 @@ pp_check(m8)
 
 
 
-
-
+#Model 9 __________________________________________________________
 ptm <- proc.time()
 #Model w/ year * pol.bias
 m9<-brms::brm(bf(sentiment ~ 1 + year * politicalBias + (1|aInd), sigma~politicalBias), data = dfSub,family=gaussian, chains=2,cores=2)
@@ -338,6 +340,7 @@ pp_check(m9)
 
 
 
+#Model 10 __________________________________________________________
 
 ptm <- proc.time()
 #Model w/ searchterm and pol.bias without year
@@ -352,6 +355,7 @@ pp_check(m10)
 
 
 
+#Model 11 __________________________________________________________
 
 ptm <- proc.time()
 #Big * model w/ all
@@ -367,6 +371,8 @@ pp_check(m11)
 
 
 
+#Model 12 __________________________________________________________
+
 ptm <- proc.time()
 #Model w/ year interacting w/ searchTerm * pol.bias
 m12<-brms::brm(bf(sentiment ~ 1 + year * searchTerm + politicalBias + (1|aInd), sigma~politicalBias), data = dfSub,family=gaussian, chains=2,cores=2)
@@ -380,6 +386,8 @@ plot(marginal_effects(m12), points = T)
 pp_check(m12)
 
 
+#Model 13 __________________________________________________________
+
 ptm <- proc.time()
 #Model w/ year interacting w/ searchTerm * pol.bias
 m13<-brms::brm(bf(sentiment ~ 1 + year + searchTerm * politicalBias + (1|aInd), sigma~politicalBias), data = dfSub,family=gaussian, chains=2,cores=2)
@@ -390,15 +398,40 @@ plot(marginal_effects(m13), points = T)
 
 plot(m13, N = 3, ask = F)
 
+stanplot(m13, pars = NA, type = "intervals",
+  exact_match = FALSE)
+
+
 conditions <- data.frame(politicalBias = unique(dfSub$politicalBias))
 rownames(conditions) <- unique(dfSub$politicalBias)
 me_m13 <- marginal_effects(
   m13, conditions = conditions, 
   re_formula = NULL, method = "predict", ask = F
 )
-
 plot(me_m13, ncol = 2, points = TRUE)
 
+
+
+
+#Sentiment by year, time and newspaper
+ggplot(dfSub, aes(year, sentiment, colour = searchTerm))+
+  geom_point()+
+  geom_abline(slope = -0.13*dfSub$politicalBias, intercept = 0.84 + dfSub$politicalBias*(-0.13)) +
+  facet_wrap(~ newspaper)
+
+
+ggplot(dfSub, aes(year, sentiment, colour = searchTerm))+
+  geom_point()+
+  geom_abline(slope = -0.13, intercept = 0.84) +
+  facet_wrap(~ newspaper)
+
+#: I ) the model intercept and main effect of year, ii) the model intercept + main effect of search terms as as a slope the main effect of year plus the interaction with search term.
+
+
+ggplot(dfSub, aes(year, sentiment, colour = searchTerm))+
+  geom_point()+
+  geom_smooth(method = "lm") +
+  facet_wrap(~ newspaper)
 
 
 
@@ -409,16 +442,29 @@ ggplot(df, aes(year, sentiment, colour = searchTerm))+
   facet_wrap(~ newspaper)
 
 
+
+
+
+
+```
+
+
+
+#Model comparisons
+
+```{r}
+
+
 #check prior and posterior (plot)
 pp_check(m13)
-
-#Funky wtf happened with these models, model check. Hype
-m12.a<-add_ic(m12,ic="waic")
-m13.a <- add_ic(m13, ic="waic")
 
 compare_ic(m0.a, m1.a, m3.a, m13.a, ic = "waic")
 
 model_weights(m12.a, m13.a, ic = "waic")
+
+
+
+
 
 #This is to check information criteria (IC) (ex. WAIC) /compare models
 m0.a<-add_ic(m0,ic="waic")
@@ -433,18 +479,13 @@ m8.a <- add_ic(m8, ic="waic")
 m9.a <- add_ic(m9, ic="waic")
 m10.a <- add_ic(m10, ic="waic")
 m11.a <- add_ic(m11, ic="waic")
-m12.a <- add_ic(m12, ic="waic")
+m12.a<-add_ic(m12,ic="waic")
+m13.a <- add_ic(m13, ic="waic")
 
-
-
-
-
-
-compare_ic(m0.a, m1.a,m2.a, m3.a, m4.a, m5.a, m6.a, m7.a, m8.a, m9.a, m10.a, m11.a, m12.a, 
+#Comparison and weights for all models
+compare_ic(m0.a, m1.a,m2.a, m3.a, m4.a, m5.a, m6.a, m7.a, m8.a, m9.a, m10.a, m11.a, m12.a, m13.a, 
 ic="waic")
 round(model_weights(m0.a, m1.a,m2.a, m3.a, m4.a, m5.a, m6.a, m7.a, m8.a, m9.a, m10.a, m11.a, m12.a,m13.a,ic="waic"), 3)
-
-
 
 
 
