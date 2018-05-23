@@ -54,8 +54,11 @@ df$politicalBias <- as.numeric(df$politicalBias)
 df$year <- sub("201","", df$year)
 df$year <- as.numeric(df$year)
 
+dfN = df
+dfN$sentiment = scale(dfN$sentiment, scale = F, center = T)
+dfN$politicalBias = scale(dfN$politicalBias, scale = F, center = T)
 
-
+dfSubN = dfN[sample(nrow(dfN), 100), ]
 # 
 # #Make a datasubset to not kill the computer
 dfSub = df[sample(nrow(df), 100), ]
@@ -179,6 +182,17 @@ precis(M3)
 
 
 
+M10 <- map2stan(
+  alist(
+    sentiment ~ dbinom(9, p),
+    p <- a + bST*searchTerm + bPB*politicalBias ,
+    a ~ dnorm(0,1),
+    bST ~ dnorm(0,1),
+    bPB ~ dnorm(0,1)
+  ), data = dfSub, chains = 2, cores = 2, iter = 1000, warmup = 500
+)
+precis(M10)
+
 #GG-plots___________________________________________________________________________
 library(ggplot2)
 
@@ -195,11 +209,11 @@ ggplot(dfSub, aes(year, sentiment, colour = searchTerm))+
 ```
 
 
-#BRMS MODELLER AND PLOTS
+#BRMS MODELS
 
 Split into fly and ind, not seperate datasets, but just show difference between in these plots. 
 
-#Sentiment!
+#Simple models
 ```{r}
 #Make models with BRMS HYPE! Either use gaussian or ordinal
 #prior<-set_prior() to set own priors
@@ -254,9 +268,6 @@ plot(marginal_effects(m3), points = T)
 pp_check(m3)
 
 
-
-
-
 ptm <- proc.time()
 #Model with year + searchterm
 m4<-brms::brm(sentiment ~ 1 + year + searchTerm + (1|aInd),data = df,family=gaussian, chains=2,cores=2)
@@ -309,7 +320,7 @@ pp_check(m7)
 ```
 
 
-#INTERACTION MODELS
+#Interaction model
 
 ```{r}
 
@@ -339,22 +350,6 @@ plot(marginal_effects(m9), points = T)
 pp_check(m9)
 
 
-
-#Model 10 __________________________________________________________
-
-ptm <- proc.time()
-#Model w/ searchterm and pol.bias without year
-m10<-brms::brm(bf(sentiment ~ 1 + searchTerm * politicalBias + (1|aInd),sigma~politicalBias), data = df,family=gaussian, chains=2,cores=2)
-proc.time() - ptm
-summary(m10)
-#Shows the interactions and effects
-plot(marginal_effects(m10), points = T)
-#check prior and posterior (plot)
-pp_check(m10)
-
-
-
-
 #Model 11 __________________________________________________________
 
 ptm <- proc.time()
@@ -367,7 +362,7 @@ plot(marginal_effects(m11), points = T)
 #check prior and posterior (plot)
 pp_check(m11)
 
-
+stanplot(m11, pars = "^b_")
 
 #Model 12 __________________________________________________________
 
@@ -383,6 +378,7 @@ plot(marginal_effects(m12), points = T)
 #check prior and posterior (plot)
 pp_check(m12)
 
+stanplot(m12, pars = "^b_")
 
 #Model 13 __________________________________________________________
 
@@ -391,25 +387,113 @@ ptm <- proc.time()
 m13<-brms::brm(bf(sentiment ~ 1 + year + searchTerm * politicalBias + (1|aInd), sigma~politicalBias), data = df,family=gaussian, chains=2,cores=2)
 proc.time() - ptm
 summary(m13)
+
+stanplot(m13, pars = "^b_")
+
+```
+
+#Model 10 - This is the one!
+```{r}
+ptm <- proc.time()
+#Model w/ searchterm and pol.bias without year
+m10UdenPrior<-brms::brm(bf(sentiment ~ 1 + searchTerm * politicalBias + (1|aInd),sigma~politicalBias), data = df,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m10UdenPrior)
+
+ptm <- proc.time()
+#Model w/ searchterm and pol.bias without year
+m10<-brms::brm(bf(sentiment ~ 1 + searchTerm * politicalBias + (1|aInd),sigma~politicalBias), data = df,family=gaussian, prior = prior, chains=2,cores=2)
+proc.time() - ptm
+
+
+#Prior ting
+prior <- get_prior(bf(sentiment ~ 1 + searchTerm * politicalBias + (1|aInd), sigma~politicalBias), data = df, family = gaussian())
+
+## define a prior on all population-level effects a once
+prior$prior[5] <- "normal(0,1)"
+
+## define a specific prior on the population-level effect of Trt_c
+prior$prior[6] <- "normal(0,1)" 
+
+prior$prior[11] <- "normal(0,1)"
+
+
+make_stancode(bf(sentiment ~ 1 + searchTerm * politicalBias + (1|aInd),sigma~politicalBias), data = df,family=gaussian, prior = prior, chains=2,cores=2)
+
+summary(m10)
+
+
+
 #Shows the interactions and effects
-plot(marginal_effects(m13), points = T)
+plot(marginal_effects(m10), points = T)
+#check prior and posterior (plot)
+pp_check(m10)
 
-plot(m13, N = 3, ask = F)
 
-stanplot(m13, pars = NA, type = "intervals",
+
+
+#Shows that the MCMC chains converged well and to the same posterior (The chains overlap nicely). We can also see distribution of estimates are decently gaussian.
+plot(m10, N = 3, ask = F)
+stanplot(m10, type = "hist")
+
+#Precis plot i STAN version. Med intercept for artikler
+stanplot(m10, pars = NA, type = "intervals",
   exact_match = FALSE)
 
+#Uden intercept for artikler.
+stanplot(m10, pars = "^b_")
 
-conditions <- data.frame(politicalBias = unique(df$politicalBias))
-rownames(conditions) <- unique(df$politicalBias)
-me_m13 <- marginal_effects(
-  m13, conditions = conditions, 
-  re_formula = NULL, method = "predict", ask = F
-)
-plot(me_m13, ncol = 2, points = TRUE)
+#MArginal plot
+# conditions <- data.frame(politicalBias = unique(df$politicalBias))
+# rownames(conditions) <- unique(df$politicalBias)
+# me_m10 <- marginal_effects(
+#   m10, conditions = conditions, 
+#   re_formula = NULL, method = "predict", ask = F
+# )
+# plot(me_m10, ncol = 2, points = TRUE)
+
+
+  get_prior(m10, df)
+
+
+#Andre forsøg med marginal lplots 
+conditions <- make_conditions(m10, "searchTerm")
+plot(marginal_effects(m10, "searchTerm:politicalBias"))
+
+
+#10
+simData <- sim(m10, data = df, n = 1e4)
+
+#dens plot on raw data
+dens(simData, col = "red", xlim = c(-5, 5), ylim = c(0,0.9),  xlab = "sentiment")
+par(new=TRUE)
+dens(df$sentiment, xlim = c(-5, 5), ylim = c(0,0.9), xlab = "sentiment")
+title("M10")
 
 
 
+#Plot of posterior with our actual data
+
+simData10 <- sim(m10, data = df, n = 1e4)
+
+#dens plot on raw data
+dens(simData10, col = "red", xlim = c(-5, 5), ylim = c(0,0.9),  xlab = "sentiment")
+par(new=TRUE)
+dens(df$sentiment, xlim = c(-5, 5), ylim = c(0,0.9), xlab = "sentiment")
+title("M10")
+
+# Model 10, centered sentiment, PB______________________________
+ptm <- proc.time()
+#Model w/ searchterm and pol.bias without year
+m10SubN<-brms::brm(bf(sentiment ~ 1 + searchTerm * politicalBias + (1|aInd),sigma~politicalBias), data = dfSubN,family=gaussian, chains=2,cores=2)
+proc.time() - ptm
+summary(m10SubN)
+```
+
+
+#GG plots
+```{r}
+#Shows the interactions and effects
 
 #Sentiment by year, time and newspaper
 ggplot(dfSub, aes(year, sentiment, colour = searchTerm))+
@@ -426,7 +510,7 @@ ggplot(dfSub, aes(year, sentiment, colour = searchTerm))+
 #: I ) the model intercept and main effect of year, ii) the model intercept + main effect of search terms as as a slope the main effect of year plus the interaction with search term.
 
 
-ggplot(dfSub, aes(year, sentiment, colour = searchTerm))+
+ggplot(df, aes(year, sentiment, colour = searchTerm))+
   geom_point()+
   geom_smooth(method = "lm") +
   facet_wrap(~ newspaper)
@@ -455,11 +539,6 @@ compare_ic(m0.a, m1.a, m3.a, m13.a, ic = "waic")
 model_weights(m12.a, m13.a, ic = "waic")
 
 
-memory.limit(12210) #12210
-## To increase the storage capacity
-memory.limit(size=12210)
-
-
 #This is to check information criteria (IC) (ex. WAIC) /compare models
 m0.a<-add_ic(m0,ic="waic")
 m1.a <- add_ic(m1, ic="waic")
@@ -477,10 +556,10 @@ m12.a<-add_ic(m12,ic="waic")
 m13.a <- add_ic(m13, ic="waic")
 
 #Comparison and weights for all models
-compare_ic(m0.a, m1.a,m2.a, m3.a, m4.a, m5.a, m6.a, m7.a, m8.a, m9.a, m10.a, m11.a, m12.a, m13.a, 
-ic="waic")
-round(model_weights(m0.a, m1.a,m2.a, m3.a, m4.a, m5.a, m6.a, m7.a, m8.a, m9.a, m10.a, m11.a, m12.a,m13.a,ic="waic"), 3)
+compare_ic(m0.a, m1.a,m2.a, m3.a, m4.a, m5.a, m6.a, m7.a, m8.a, m9.a, m10.a, m11.a, m12.a, m13.a, ic="waic")
 
+memory.limit(25000)
+round(model_weights(m0.a, m1.a,m2.a, m3.a, m4.a, m5.a, m6.a, m7.a, m8.a, m9.a, m10.a, m11.a, m12.a,m13.a,ic="waic"), 3)
 
 
 
@@ -502,14 +581,13 @@ round(model_weights(m0.a, m1.a,m2.a, m3.a, m4.a, m5.a, m6.a, m7.a, m8.a, m9.a, m
 #proc.time() - ptm
 
 
-
-
-
 ```
 
 
-#Arousal
+#
 ```{r}
+
+
 
 ```
 
